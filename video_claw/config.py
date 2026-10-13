@@ -1,0 +1,255 @@
+"""Project config loader.
+
+A project is a directory with `slides.py` (or `project.json`) that defines a SLIDES
+list. We also accept a single-file `project.py` containing SLIDES + optional CONFIG.
+
+slides.py format (preferred: Python so narration strings can be multi-line clean):
+
+    CONFIG = {
+        "title": "Skill demo",
+        "orientation": "horizontal",      # or "short"
+        "out_path": "out/skill_demo.mp4", # relative to project dir
+        "tts": {
+            "provider": "elevenlabs",     # or "deepgram"
+            "voice_id": "cgSgspJ2msm6clMCkdW9",  # Jessica
+            "model": "eleven_turbo_v2_5",
+            "speaking_rate": 1.0,
+        },
+    }
+
+    SLIDES = [
+        {"type": "html", "html": "slides/intro.html", "narration": "Hi, I'm Becky AI..."},
+        {"type": "image", "image": "assets/screenshot.png", "narration": "..."},
+        {"type": "video", "video": "assets/demo.mp4", "narration": "...", "title": "Demo"},
+    ]
+
+Slide schema:
+  type:       "html" | "image" | "video"
+  html/image/video: path relative to project dir
+  narration:  string the TTS engine will speak
+  title:      optional, drawn as a strip for image/video slides
+  lipsync:    optional bool, requires fal.ai key
+  speed:      optional float override (default 1.0)
+"""
+from __future__ import annotations
+import importlib.util
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+DEFAULT_CONFIG = {
+    "title": "narrated-video",
+    "orientation": "horizontal",  # "horizontal" (1920x1080) or "short" (1080x1920)
+    "out_path": "out/video.mp4",
+    "tts": {
+        "provider": "auto",  # auto-select EL -> Deepgram -> macOS from the keys present
+        # §5.5 voice lane — eleven_v3 pinned (turbo_v2_5 drifts accent);
+        # falls back to the cascade when no EL key.
+        "voice_id": "cgSgspJ2msm6clMCkdW9",   # ElevenLabs "Jessica" — set your own
+        "model": "eleven_v3",
+        "speaking_rate": 1.0,
+        # Deepgram fallback voice if provider=deepgram
+        "deepgram_voice": "aura-2-thalia-en",
+        # macOS local voice; "auto" picks the best installed English voice
+        "macos_voice": "auto",
+    },
+    "lipsync": {
+        "avatar": "assets/avatar.png",  # relative to project dir; only used on slides with lipsync=True
+        "fal_omnihuman_version": "v1.5",
+        "resolution": "720p",
+    },
+    "mode": None,  # set to "free" for a $0 render (macOS TTS, static avatar, no paid APIs)
+    "avatar": {
+        "static": False,       # overlay a still circular avatar badge
+        "scope": "all",        # "all" | "intro" | "flagged"
+        "image": None,         # path rel. to project; falls back to lipsync.avatar then bundled
+        "diameter": 280,
+    },
+    "captions": {
+        "estimate": True,      # always caption: estimate timing when TTS gives no alignment
+    },
+    # §5.2/§5.10 render gates. hook_max_s: None disables the hook gate.
+    "gates": {
+        "hook_max_s": 3.0,
+    },
+    # §5.10 explainer mode: hook <=3s, question by ~23s, stakes by ~33s,
+    # recap <=20s — machine-checked on the measured master timeline.
+    "explainer": False,
+    # §5.6 music bed lane: {track, gain, ducking} — track rel. to project dir.
+    "music": {},
+    # §5.4 clip-first cuts: {"emit": true} auto-emits pre-timestamped
+    # segments (hook / slide boundaries / CTA) + clips.json beside the master.
+    "clips": {},
+    # §5.7 headless batch: spend ceiling in USD (the spend law).
+    "batch": {
+        "spend_ceiling_usd": 1.00,
+    },
+}
+
+
+@dataclass
+class Project:
+    project_dir: Path
+    config: Dict[str, Any]
+    slides: List[Dict[str, Any]]
+    out_dir: Path = field(init=False)
+
+    def __post_init__(self):
+        self.out_dir = (self.project_dir / "video_build").resolve()
+
+    @property
+    def orientation(self) -> str:
+        return self.config.get("orientation", "horizontal")
+
+    @property
+    def dimensions(self) -> tuple[int, int]:
+        return (1080, 1920) if self.orientation == "short" else (1920, 1080)
+
+    @property
+    def out_path(self) -> Path:
+        p = Path(self.config.get("out_path") or DEFAULT_CONFIG["out_path"])
+        if not p.is_absolute():
+            p = (self.project_dir / p).resolve()
+        return p
+
+
+def _deep_merge(base: dict, over: dict) -> dict:
+    # Deep-copy all base dict values so downstream mutations never bleed back
+    # into DEFAULT_CONFIG (or whichever base was passed).
+    out: dict = {}
+    for k, v in base.items():
+        out[k] = _deep_merge(v, {}) if isinstance(v, dict) else v
+    for k, v in over.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _apply_free_mode(config: dict, slides: list) -> None:
+    """Mutate `config` + `slides` in place so the render costs $0.
+
+    Free mode FORCES the free/local path (it does not merely default to it),
+    so a stray `provider: "elevenlabs"` or a slide-level `lipsync: True` left
+    in the project file cannot silently incur cost. A user-set `macos_voice`
+    is respected.
+    """
+    tts = config.setdefault("tts", {})
+    tts["provider"] = "macos"
+    tts.setdefault("macos_voice", "auto")  # best installed voice; respects an explicit override
+
+    for slide in slides:
+        slide.pop("lipsync", None)  # never call paid fal.ai in free mode
+
+    avatar = config.setdefault("avatar", {})
+    avatar["static"] = True
+    avatar.setdefault("scope", "all")
+    avatar.setdefault("diameter", 280)
+    if not avatar.get("image"):
+        # fall back to the lipsync avatar path; avatar.resolve_avatar_image
+        # falls back further to the bundled Becky portrait at render time.
+        avatar["image"] = (config.get("lipsync") or {}).get("avatar")
+
+    config.setdefault("captions", {})["estimate"] = True
+
+
+def load(project_dir: Path) -> Project:
+    project_dir = project_dir.resolve()
+    if not project_dir.exists():
+        raise FileNotFoundError(f"Project directory not found: {project_dir}")
+
+    py_path = project_dir / "slides.py"
+    json_path = project_dir / "project.json"
+
+    if py_path.exists():
+        spec = importlib.util.spec_from_file_location("user_slides", py_path)
+        mod = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(mod)
+        slides = list(getattr(mod, "SLIDES", []))
+        user_cfg = dict(getattr(mod, "CONFIG", {}))
+    elif json_path.exists():
+        data = json.loads(json_path.read_text())
+        slides = list(data.get("slides", []))
+        user_cfg = dict(data.get("config", {}))
+    else:
+        raise FileNotFoundError(
+            f"No slides.py or project.json in {project_dir}.\n"
+            "Run `rendermill init` to scaffold a project."
+        )
+
+    config = _deep_merge(DEFAULT_CONFIG, user_cfg)
+    if config.get("mode") == "free":
+        _apply_free_mode(config, slides)
+    return Project(project_dir=project_dir, config=config, slides=slides)
+
+
+SAMPLE_SLIDES_PY = '''"""Project: %(title)s
+
+This is the self-referential default scaffold: 4 slides about what rendermill
+is. Run `rendermill render` to ship it as-is (~$2 in API calls), or hand this
+file to Claude and ask for a video about something else. Claude knows the
+schema and the design rules via the rendermill skill.
+
+SLIDES is the source of truth: narration text, slide types, lipsync flags,
+and speed overrides all live here. Each slide pairs an HTML/image/video
+asset with a string of narration the TTS engine will speak.
+"""
+
+CONFIG = {
+    "title": "%(title)s",
+    "orientation": "%(orientation)s",   # "horizontal" or "short"
+    "out_path": "out/%(slug)s.mp4",
+    # "mode": "free",  # $0 render: macOS `say` voice, static Becky avatar on
+    #                  # every slide, free estimated captions, no paid APIs.
+    "tts": {
+        # "auto" uses ElevenLabs if you have a key, else Deepgram, else free
+        # macOS local TTS — so this renders with no keys at all on a Mac.
+        "provider": "auto",
+        "voice_id": "cgSgspJ2msm6clMCkdW9",  # ElevenLabs Jessica (used only if auto picks EL)
+        "model": "eleven_turbo_v2_5",
+        "speaking_rate": 1.0,
+    },
+    # Static presenter avatar (independent of free mode).
+    # Uncomment to put a still circular Becky badge in the bottom-right of
+    # every slide while still using paid ElevenLabs / fal.ai elsewhere.
+    # Zero extra cost; ffmpeg composites the badge during stitch.
+    # "avatar": {
+    #     "static": True,        # turn the overlay on
+    #     "scope": "all",        # "all" | "intro" | "flagged"
+    #     "image": None,         # path rel. to project; falls back to bundled Becky
+    #     "diameter": 280,
+    # },
+}
+
+SLIDES = [
+    {
+        "type": "html",
+        "html": "slides/intro.html",
+        "narration": "Meet rendermill. A tiny tool that turns HTML slides into a narrated MP4.",
+        "lipsync": True,    # uses assets/avatar.png; needs FAL_API_KEY
+        "speed": 1.15,
+    },
+    {
+        "type": "html",
+        "html": "slides/tell_claude.html",
+        "narration": "Step one. Tell Claude what you want. A topic, a length, an audience.",
+        "speed": 1.15,
+    },
+    {
+        "type": "html",
+        "html": "slides/claude_writes.html",
+        "narration": "Step two. Claude writes the slides and the narration, following the design rules in the skill.",
+        "speed": 1.15,
+    },
+    {
+        "type": "html",
+        "html": "slides/outro.html",
+        "narration": "Step three. Run rendermill render. You get an MP4 in the out folder. That is the whole thing.",
+        "speed": 1.15,
+    },
+]
+'''

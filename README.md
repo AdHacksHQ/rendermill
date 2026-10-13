@@ -1,0 +1,384 @@
+# Rendermill
+
+> **Provenance:** MIT fork of [video-claw](https://github.com/amirfish1/video-claw) by Amir Fish (upstream preserved as git remote; LICENSE intact). Renamed to Rendermill 2026-10-04 per the naming convention — owned outright post-fork. Internal module path `video_claw/` retained for mechanical compatibility.
+
+Narrated slide videos for people who would rather describe a video than
+storyboard one. You tell the mill what you want. Your agent writes the
+slides and narration. Rendermill ships the MP4.
+
+Optional lip-synced AI presenter via fal.ai OmniHuman. Optional burned-in
+word-aligned captions via ElevenLabs.
+
+Built for macOS. Works on Linux.
+
+## Quickstart
+
+```
+# One command: install, then walk you through API key setup.
+curl -fsSL https://raw.githubusercontent.com/amirfish1/video-claw/main/install.sh | bash
+```
+
+Or the manual two-step:
+
+```
+pipx install git+https://github.com/amirfish1/video-claw
+rendermill setup            # interactive key wizard with cost notes
+rendermill install-skill    # optional: register the Claude Code skill
+```
+
+Then open Claude Code in any directory and say:
+
+> "Make me a 30-second video about how SSDs work."
+
+Claude reads the rendermill skill, drafts `slides.py` + the HTML files,
+asks for any missing API keys, runs `rendermill render`, and hands you the
+MP4 in `out/`. You never touch the CLI directly unless you want to.
+
+The skill triggers on natural-language prompts like "make a video about X",
+"turn this outline into a narrated walkthrough", "build a short for
+Shorts/TikTok/Reels". No slash command, no remembered syntax.
+
+## Demo
+
+https://github.com/user-attachments/assets/180d77f3-e847-4e39-901c-bddccbed25ad
+
+<sub>(also at <a href="https://raw.githubusercontent.com/amirfish1/video-claw/main/docs/demo.mp4"><code>docs/demo.mp4</code></a> in the repo)</sub>
+
+## What you get
+
+- **HTML slides.** Write them like web pages with full CSS. No bespoke DSL.
+- **Two orientations.** `horizontal` (1920x1080) for YouTube and embeds,
+  `short` (1080x1920) for Shorts, TikTok, Reels.
+- **Works with zero keys.** `provider` defaults to `"auto"`: it uses ElevenLabs
+  if you have a key, else Deepgram, else free macOS local TTS — no config, no
+  hard failure. Add keys to upgrade quality.
+- **Captions always.** Word-aligned from ElevenLabs; estimated from Deepgram /
+  macOS. Never silently dropped.
+- **Free / $0 mode.** Set `CONFIG["mode"] = "free"` — local macOS voice,
+  static Becky avatar, free captions, zero paid API calls (macOS only).
+  See [Free / $0 mode](#free--0-mode).
+- **Optional lipsync.** Set `lipsync: True` on any slide; fal.ai overlays a
+  circular AI presenter in the bottom-right.
+- **Word-aligned captions.** Burned in via libass when available, otherwise
+  shipped as an SRT sidecar.
+- **Preview gate.** Local web server shows every slide PNG in a grid before
+  any paid API is hit. Press `y` to spend, anything else to abort.
+- **Content-hash cache.** Re-runs are seconds, not minutes. Iterate freely.
+- **Animated per-slide backdrops (§5.3).** `"backdrop": "<mp4>"` fuses any
+  slide over looping deterministic simulation b-roll (library at
+  `marketing/engine/backdrops/library`), narration audio concat over it.
+- **Clip-first cuts (§5.4).** `clips: {"emit": true}` auto-emits
+  pre-timestamped hook / slide / CTA segments + `clips/clips.json` manifest
+  beside the master — cuts are a render output, not a re-watch.
+- **Hook gate (§5.2).** Renders whose slide-1 narration measures >3s or
+  whose opening frame is text-only are REJECTED (exit 3) before the rest
+  of the pipeline spends anything. Word-count preflight is $0.
+- **Explainer gates (§5.10).** `explainer: True` machine-checks hook <=3s,
+  question by ~23s, stakes by ~33s, recap <=20s on the measured timeline.
+- **Music bed (§5.6).** `music: {track, gain, ducking}` mixes a bed under
+  the narration (ffmpeg amix + voice-activated sidechain ducking).
+- **Headless batch (§5.7).** `rendermill batch <dirs>` prints a cost report,
+  auto-proceeds under the spend ceiling, and halts (Yellow gate) when a
+  project would cross it.
+- **Voice lane (§5.5).** Default voice_id on eleven_v3.
+- **Claude skill ships in the box.** `rendermill install-skill` copies the
+  bundled skill into `~/.claude/skills/rendermill/`. Any Claude Code
+  session, in any directory, can drive rendermill on natural-language
+  prompts after that.
+- **Hermes skill port (§5.8).** `bash install-skill.sh` in the repo root
+  installs `skills/rendermill/` into `~/.hermes/skills/rendermill`
+  (and refreshes the Claude Code copy when present).
+- **Engine payload mode (§5.1, stubbed).** `video_claw/payload.py`
+  documents the Stage 4/5 JSON contract and loads it into slides; the
+  producer side lands when the first real payload exists.
+
+## Free / $0 mode
+
+Don't want to spend a cent? Set one key in your project's `CONFIG`:
+
+```python
+CONFIG = {
+    # ...
+    "mode": "free",
+}
+```
+
+That's the whole switch. It **forces** a zero-cost render and overrides
+anything in the project that would otherwise spend money:
+
+- **macOS `say` narration** — defaults to the `Zoe (Premium)` voice. Premium
+  voices download once via System Settings → Accessibility → Spoken Content →
+  System Voice → Manage Voices. If Zoe isn't installed, free mode falls back to
+  the always-present `Samantha` (and prints a hint). Override with
+  `tts: {"macos_voice": "Samantha"}`.
+- **No lip-sync** — any slide `lipsync: True` is ignored; fal.ai is never called.
+- **Static presenter** — a circular avatar badge on every slide (bundled Becky,
+  or your own via `avatar: {"image": "assets/you.png"}`), bottom-right.
+- **Free captions** — estimated word timing, burned in locally with libass.
+
+macOS only — it needs Apple's `say`. On Linux, use ElevenLabs/Deepgram.
+
+**Or just ask Claude.** Say *"make me a free video about X"* (or "$0", "no
+budget") and the skill sets `mode: "free"` for you — no file editing. You'll
+know it's active when the render prints
+`[boot] $0 mode: local macOS TTS, no paid APIs`.
+
+Here's a free-mode render — Zoe voice, Becky badge, estimated captions,
+rendered with no API keys:
+
+https://github.com/user-attachments/assets/f0f2a0b6-debb-46a8-8010-bd74d10eab52
+
+<sub>(also at <a href="https://raw.githubusercontent.com/amirfish1/video-claw/main/docs/free-mode-demo.mp4"><code>docs/free-mode-demo.mp4</code></a> in the repo)</sub>
+
+## Install
+
+```
+pipx install git+https://github.com/amirfish1/video-claw
+rendermill install-skill
+```
+
+`pipx` puts the CLI on PATH in its own venv (works on stock Homebrew Python
+where plain `pip install` would fail via PEP 668). If pipx is missing:
+`brew install pipx`.
+
+When you upgrade with `pipx upgrade rendermill`, re-run `rendermill
+install-skill` to pick up the latest SKILL.md.
+
+### Manual venv install (if you don't want pipx)
+
+```
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install git+https://github.com/amirfish1/video-claw
+rendermill install-skill
+```
+
+### Prerequisites
+
+- **Python 3.10+**.
+- **A Chromium-class browser** on disk. Google Chrome, Chromium, or Brave
+  all work. The renderer shells out to whichever it finds. Playwright is not
+  required.
+- **ffmpeg + ffprobe** on PATH. Homebrew ffmpeg handles everything except
+  caption burn-in. The package falls back to shipping an SRT sidecar in that
+  case. To burn captions into the MP4, install `imageio-ffmpeg` (which carries
+  a libass-enabled binary): `pipx inject rendermill imageio-ffmpeg`.
+
+## API keys
+
+**No keys are required** — on a Mac, `provider:"auto"` renders with free local
+TTS out of the box. Add a TTS key to upgrade quality; lipsync is opt-in per
+slide. Keys only become mandatory when you pin a paid provider explicitly or
+run on Linux with no key.
+
+| Key | Required when | Where to get it |
+| --- | --- | --- |
+| `ELEVENLABS_API_KEY` | Default TTS, also drives word-level captions | https://elevenlabs.io/app/settings/api-keys |
+| `FAL_API_KEY` | Any slide has `lipsync: True` | https://fal.ai/dashboard/keys |
+| `DEEPGRAM_API_KEY` | Only when `tts.provider="deepgram"` (cheaper, no captions) | https://console.deepgram.com |
+
+Resolution order: env var, then `~/.config/rendermill/keys.env` (mode 0600,
+created automatically when you run `keys set`).
+
+```
+rendermill keys set EL=sk_xxx FAL=xxx
+rendermill keys test
+```
+
+`keys test` shows `[opt]` for optional keys that aren't set; only required
+keys fail.
+
+## Cost
+
+Typical 5-minute narrated video with ~30 seconds of lipsync bookends:
+
+| Item | Rate | 5-min video |
+| --- | --- | --- |
+| ElevenLabs Turbo v2.5 (with timestamps) | ~$0.30 / min of audio | ~$1.50 |
+| fal.ai OmniHuman 1.5 lipsync | $0.16 / sec of generated video | ~$4.80 (30 sec) |
+| **Total** | | **~$6.30** |
+
+Deepgram Aura-2 TTS is ~$0.015 / 1k chars and skips captions; for a 5-min
+video that's roughly $0.10. Captions need ElevenLabs.
+
+The content-hash cache means you only pay once per unique narration +
+voice + speed. Re-render to fix a CSS typo: free.
+
+## Manual CLI (without Claude)
+
+You can drive rendermill directly from the shell if you want. This is the
+loop Claude runs for you under the hood:
+
+```
+rendermill init my-vid          # scaffold a project directory
+cd my-vid
+rendermill keys set EL=sk_...   # or export ELEVENLABS_API_KEY
+rendermill preview              # eyeball the slide PNGs first (no spend)
+rendermill render               # spends EL + optional fal, ships out/<name>.mp4
+```
+
+Out of the box, `init` scaffolds a 4-slide self-referential demo. Running
+`rendermill render` immediately produces a working ~30-second video about
+what rendermill does, useful as a sanity check on your install. To make
+your own video, overwrite `slides.py` and the HTML files in `slides/`
+(by hand, or by asking Claude).
+
+## Project layout
+
+A project is a directory. After `rendermill init my-vid`:
+
+```
+my-vid/
+├── slides.py          # SLIDES = [...] and CONFIG = {...}
+├── slides/
+│   ├── _shared.css    # design tokens
+│   ├── intro.html
+│   ├── tell_claude.html
+│   ├── claude_writes.html
+│   └── outro.html
+├── assets/
+│   └── avatar.png     # used by slides with lipsync: True
+├── out/
+│   └── video.mp4      # final output
+└── video_build/       # cache + intermediates (safe to delete)
+```
+
+`slides.py`:
+
+```python
+CONFIG = {
+    "title": "My demo",
+    "orientation": "horizontal",   # or "short"
+    "out_path": "out/demo.mp4",
+    "tts": {
+        "provider": "elevenlabs",
+        "voice_id": "cgSgspJ2msm6clMCkdW9",   # Jessica
+        "model": "eleven_turbo_v2_5",
+        "speaking_rate": 1.2,
+    },
+}
+
+SLIDES = [
+    {
+        "type": "html",
+        "html": "slides/intro.html",
+        "narration": "Hi. Here is what we're covering today.",
+        "lipsync": True,
+    },
+    {
+        "type": "html",
+        "html": "slides/point_one.html",
+        "narration": "Point one. The hook.",
+    },
+    {
+        "type": "image",
+        "image": "assets/screenshot.png",
+        "narration": "This is the dashboard.",
+        "title": "Dashboard",
+    },
+    {
+        "type": "video",
+        "video": "assets/demo.mp4",
+        "narration": "Here is a five-second clip of the app.",
+        "title": "Live demo",
+    },
+    {
+        "type": "html",
+        "html": "slides/outro.html",
+        "narration": "Thanks for watching.",
+        "lipsync": True,
+    },
+]
+```
+
+Slide types:
+
+- `html`. Chromium renders the file at canvas size. Use `_shared.css` for tokens.
+- `image`. Wrapped in a Chromium template, gets a title strip if `title` is set.
+- `video`. Drawn as a backdrop with a viewport rectangle; the clip is composited via ffmpeg.
+
+Optional fields on any slide:
+
+- `lipsync: True`. Overlay a fal.ai OmniHuman circle on this slide (requires
+  `FAL_API_KEY` and `assets/avatar.png`).
+- `speed: 1.2`. Override `tts.speaking_rate` for this slide only.
+- `title: "..."`. Drawn as an amber-accented title strip for image/video slides.
+
+## Commands
+
+```
+rendermill init [path]       # scaffold a project
+rendermill render            # the main command
+rendermill preview           # render slide PNGs only, no TTS spend
+rendermill keys list         # show configured keys (masked)
+rendermill keys set EL=sk_x  # save a key
+rendermill keys test         # verify each key against its provider
+rendermill keys path         # print the keys.env path
+```
+
+`render` flags:
+
+- `--yes` / `-y`. Skip the interactive preview gate.
+- `--no-preview`. Render without even opening the preview server.
+- `--out path.mp4`. Override the output path.
+
+## How it renders (one cycle)
+
+1. For each slide: HTML/image/video to PNG (cached by content hash).
+2. Open `http://127.0.0.1:<random>/_preview_index.html` and wait for `y` in
+   the terminal. The URL is also printed as a copy-paste banner.
+3. For each slide: TTS to mp3 + alignment.json, then to m4a with silenceremove
+   plus atempo (cached).
+4. For slides with `lipsync: True`: upload narration mp3 + avatar PNG to fal.ai,
+   poll for the lipsync MP4, crop it to a transparent circle (cached).
+5. Per-slide MP4: PNG backdrop + m4a audio + optional lipsync circle overlay (cached).
+6. Concat all slide MP4s.
+7. If ElevenLabs alignment data exists: build an .ass subtitle file and burn
+   it in with libass. Falls back to an SRT sidecar if libass is unavailable.
+8. Final MP4 at `out/<name>.mp4`.
+
+## Troubleshooting
+
+**"Couldn't find a Chrome/Chromium binary"**. Install Google Chrome
+(https://www.google.com/chrome/), or set `CHROME_BIN=/path/to/chrome`.
+
+**Caption burn fails**. Stock Homebrew ffmpeg lacks libass. Install
+`imageio-ffmpeg` (`pipx inject rendermill imageio-ffmpeg`, or
+`pip install imageio-ffmpeg` inside your venv). The package will auto-use
+its bundled binary just for the caption burn step. Until then, the SRT
+sidecar at `video_build/captions.srt` is your captions track.
+
+**Preview did not open in browser**. The URL is printed as a banner before
+the launcher fires. Copy it from the terminal. Headless sessions (SSH,
+containers) will always need this path.
+
+**Circle lipsync looks washed out**. The avatar source PNG has a transparent
+background. OmniHuman preserves transparency; the circle crop then has
+artifacts. Fix: flatten the avatar onto solid black before saving it to
+`assets/avatar.png`. The bundled default avatar is already flat.
+
+**Stale cache**. Set `FORCE_REGEN=1` in the environment to bypass every
+cache layer. Or `rm -rf video_build/`.
+
+## Claude Code skill
+
+rendermill also ships as a Claude Code skill. The package wheel bundles
+`SKILL.md` plus its references, and `rendermill install-skill` lays them
+down at `~/.claude/skills/rendermill/`. The `install.sh` one-liner offers
+to do this for you (default Yes) when it detects a `~/.claude/` directory;
+otherwise run it yourself once:
+
+```
+rendermill install-skill
+```
+
+After that any Claude Code session, in any directory, can drive rendermill
+on natural-language prompts. The trigger phrases are listed inside
+`SKILL.md` ("make me a video about X", "build a short for Reels", etc.).
+
+Niche audience — if you don't use Claude Code, ignore this section and use
+the manual CLI above.
+
+## License
+
+MIT. See `LICENSE`.
