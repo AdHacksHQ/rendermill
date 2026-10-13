@@ -46,7 +46,7 @@ bundled Claude skill at `$MILL/video_claw/skill_data/rendermill/SKILL.md`
   --spend-ceiling 0.50` (+ `--dry-run` for the cost report alone).
   Halt on `[batch][yellow-gate]` means stop and ask the human; do NOT
   retry or raise the ceiling yourself.
-- **Free / $0:** `CONFIG["mode"] = "free"` — macOS say TTS, no paid APIs.
+- **Free / $0:** `CONFIG["mode"] = "free"` — local TTS (say/SAPI/espeak-ng), no paid APIs.
   Default choice for drafts and gate rehearsals.
 - **Engine payload (§5.1, stubbed):** load Stage 4/5 JSON with
   `python -c "from video_claw.payload import load_payload; ..."` — the

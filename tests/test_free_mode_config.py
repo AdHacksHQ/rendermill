@@ -8,7 +8,7 @@ def _write_project(dir_: Path, config_src: str, slides_src: str) -> Path:
     return dir_
 
 
-def test_free_mode_forces_macos_and_strips_lipsync(tmp_path):
+def test_free_mode_forces_local_and_strips_lipsync(tmp_path):
     from video_claw import config as cfg_mod
     _write_project(
         tmp_path,
@@ -16,8 +16,8 @@ def test_free_mode_forces_macos_and_strips_lipsync(tmp_path):
         '[{"type": "html", "html": "a.html", "narration": "hi", "lipsync": True}]',
     )
     project = cfg_mod.load(tmp_path)
-    assert project.config["tts"]["provider"] == "macos"
-    assert project.config["tts"]["macos_voice"] == "auto"
+    assert project.config["tts"]["provider"] == "local"
+    assert project.config["tts"]["local_voice"] == "auto"
     assert project.config["avatar"]["static"] is True
     assert project.config["avatar"]["scope"] == "all"
     assert project.config["captions"]["estimate"] is True
@@ -32,7 +32,7 @@ def test_free_mode_respects_custom_voice(tmp_path):
         '[{"type": "html", "html": "a.html", "narration": "hi"}]',
     )
     project = cfg_mod.load(tmp_path)
-    assert project.config["tts"]["macos_voice"] == "Samantha"
+    assert project.config["tts"]["local_voice"] == "Samantha"
 
 
 def test_non_free_mode_untouched(tmp_path):

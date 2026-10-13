@@ -5,9 +5,9 @@ Walks the user through configuring API keys for the providers we support:
   - fal.ai       (optional, lip-synced presenter)
   - Deepgram     (optional, cheaper paid TTS, no word-level captions)
 
-There's also a free macOS-only `say` provider that needs no key — we
-mention it up front so users know they can opt into free TTS instead of
-ElevenLabs if they're on a Mac.
+There's also a free local provider (macOS `say` / Windows SAPI / Linux
+espeak-ng) that needs no key — we mention it up front so users know they
+can opt into free TTS instead of ElevenLabs.
 
 Designed to also work in a `curl ... | bash` install context where stdin is
 the script itself. In that case we read user input from /dev/tty directly,
@@ -26,19 +26,16 @@ from . import keys as keys_mod
 
 
 # TTS-provider intro. Printed before any key prompt so the user understands
-# they have a free option (macOS say) and aren't forced to paste an EL key.
+# they have a free local option and aren't forced to paste an EL key.
 def _tts_intro() -> str:
-    macos_line = "  1. macOS say (free, built-in)  — voice quality: decent, no captions, macOS-only"
-    if platform.system() != "Darwin":
-        macos_line += "  [unavailable on this OS]"
     return (
         "TTS provider — three options:\n"
-        f"{macos_line}\n"
+        "  1. Local voice (free, built-in) — macOS say / Windows SAPI / Linux espeak-ng; decent, no captions\n"
         "  2. ElevenLabs Turbo v2.5 (~$0.30/min audio, paid) — voice quality: high, with word-level captions\n"
         "  3. Deepgram Aura-2 (cheaper than ElevenLabs, no word captions)\n"
         "\n"
         'For "Hi I\'m Becky" intros: ElevenLabs is the typical pick.\n'
-        "For long technical walkthroughs: macOS say is great, free, and offline."
+        "For long technical walkthroughs: the local voice is free and offline."
     )
 
 
@@ -200,8 +197,8 @@ def run_wizard() -> int:
     _print(out_s, "")
     _print(out_s, _tts_intro())
 
-    # ElevenLabs is no longer REQUIRED at the wizard level — macOS users can
-    # pick `tts.provider="macos"` and skip it entirely. Mark it optional and
+    # ElevenLabs is no longer REQUIRED at the wizard level — users can
+    # pick `tts.provider="local"` and skip it entirely. Mark it optional and
     # let `rendermill render` re-check at render time based on the project's
     # actual `tts.provider` setting.
     el = _collect(
@@ -261,8 +258,8 @@ def print_status(stream: Optional[TextIO] = None) -> int:
         "FAL_API_KEY": "FAL (fal.ai lipsync)",
         "DEEPGRAM_API_KEY": "Deepgram",
     }
-    # All three are technically optional now that macOS `say` is a real free
-    # TTS option — render-time validation still complains if you pick a
+    # All three are technically optional now that local TTS is a real free
+    # option — render-time validation still complains if you pick a
     # provider whose key is missing. The wizard's job is just to show status.
     optional = {"ELEVENLABS_API_KEY", "FAL_API_KEY", "DEEPGRAM_API_KEY"}
     required_failed = False

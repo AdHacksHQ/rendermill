@@ -272,13 +272,16 @@ def _ensure_keys_for(project: cfg_mod.Project) -> Optional[str]:
 
     if provider.startswith("eleven") and not os.environ.get("ELEVENLABS_API_KEY"):
         return ("Missing ELEVENLABS_API_KEY (for ElevenLabs TTS).\n"
-                "Set via: rendermill keys set EL=sk_..., or use provider 'auto'/'macos'.")
+                "Set via: rendermill keys set EL=sk_..., or use provider 'auto'/'local'.")
     if provider.startswith("deepgram") and not os.environ.get("DEEPGRAM_API_KEY"):
         return ("Missing DEEPGRAM_API_KEY (for Deepgram TTS).\n"
-                "Set via: rendermill keys set DG=..., or use provider 'auto'/'macos'.")
-    if provider in ("macos", "say", "macos-say") and platform.system() != "Darwin":
-        return ("macOS local TTS selected but this is not macOS.\n"
-                "Use 'elevenlabs' or 'deepgram' on Linux.")
+                "Set via: rendermill keys set DG=..., or use provider 'auto'/'local'.")
+    if provider == "local":
+        from .tts import local as _tts_local
+        if not _tts_local.is_available():
+            return ("Local TTS selected but no local voice found on this OS.\n"
+                    "macOS `say` and Windows SAPI are built-in; on Linux run "
+                    "`apt install espeak-ng` — or use 'elevenlabs'/'deepgram'.")
 
     if any(s.get("lipsync") for s in project.slides) and not os.environ.get("FAL_API_KEY"):
         print("  [keys] FAL_API_KEY not set; lipsync slides will render without "

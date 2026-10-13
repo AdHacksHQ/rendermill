@@ -9,7 +9,7 @@ slides and narration. Rendermill ships the MP4.
 Optional lip-synced AI presenter via fal.ai OmniHuman. Optional burned-in
 word-aligned captions via ElevenLabs.
 
-Built for macOS. Works on Linux.
+Runs on macOS, Linux, and Windows.
 
 ## Quickstart
 
@@ -53,9 +53,9 @@ https://github.com/user-attachments/assets/180d77f3-e847-4e39-901c-bddccbed25ad
   if you have a key, else Deepgram, else free macOS local TTS — no config, no
   hard failure. Add keys to upgrade quality.
 - **Captions always.** Word-aligned from ElevenLabs; estimated from Deepgram /
-  macOS. Never silently dropped.
-- **Free / $0 mode.** Set `CONFIG["mode"] = "free"` — local macOS voice,
-  static Becky avatar, free captions, zero paid API calls (macOS only).
+  the local TTS. Never silently dropped.
+- **Free / $0 mode.** Set `CONFIG["mode"] = "free"` — local voice (say/SAPI/espeak-ng),
+  static Becky avatar, free captions, zero paid API calls (all platforms).
   See [Free / $0 mode](#free--0-mode).
 - **Optional lipsync.** Set `lipsync: True` on any slide; fal.ai overlays a
   circular AI presenter in the bottom-right.
@@ -116,7 +116,7 @@ anything in the project that would otherwise spend money:
   or your own via `avatar: {"image": "assets/you.png"}`), bottom-right.
 - **Free captions** — estimated word timing, burned in locally with libass.
 
-macOS only — it needs Apple's `say`. On Linux, use ElevenLabs/Deepgram.
+Uses your OS's built-in voice — macOS `say`, Windows SAPI, or Linux espeak-ng (`apt install espeak-ng`).
 
 **Or just ask Claude.** Say *"make me a free video about X"* (or "$0", "no
 budget") and the skill sets `mode: "free"` for you — no file editing. You'll

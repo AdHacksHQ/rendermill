@@ -39,6 +39,7 @@ DEFAULT_TTS = {
     "model": "eleven_turbo_v2_5",
     "speaking_rate": 1.0,
     "deepgram_voice": "aura-2-thalia-en",
+    "local_voice": "auto",
     "macos_voice": "auto",
 }
 

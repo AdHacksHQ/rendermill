@@ -1,10 +1,13 @@
-"""Text-to-speech providers: ElevenLabs (primary), Deepgram, macOS `say`.
+"""Text-to-speech providers: ElevenLabs (primary), Deepgram, local (free).
+
+Local = the OS's built-in offline voice — macOS `say`, Windows SAPI, or
+Linux espeak-ng — dispatched by `video_claw.tts.local`.
 
 Each `make_audio_<provider>` takes `(text, idx, *, workdir, cache, tts_cfg)`
 and returns `(m4a_path, duration_seconds)`. ElevenLabs additionally writes
 an alignment JSON sidecar (`narr_NN.alignment.json` in workdir) for
-caption timing. Deepgram and macOS produce no word-level alignment;
-caption flow degrades to estimated timing.
+caption timing. Deepgram and the local providers produce no word-level
+alignment; caption flow degrades to estimated timing.
 
 Caching is wired through `cache.run`:
   - kind="tts" caches raw provider output (mp3 / wav / optional alignment sidecar)
@@ -13,7 +16,7 @@ Caching is wired through `cache.run`:
 Voice defaults (DO NOT change without reading CLAUDE.md):
   ElevenLabs: cgSgspJ2msm6clMCkdW9  (Jessica)
   Deepgram:   aura-2-thalia-en
-  macOS say:  Samantha               (system voice, always installed)
+  local:      auto  (best installed voice per-OS: say / SAPI / espeak-ng)
 """
 from __future__ import annotations
 import base64
@@ -26,7 +29,8 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from .. import keys
-from . import macos as _macos
+from . import local as _local
+from . import macos as _macos  # kept for backward-compat imports/tests
 
 
 DEFAULT_TTS = {
@@ -36,6 +40,7 @@ DEFAULT_TTS = {
     "speaking_rate": 1.0,
     "deepgram_voice": "aura-2-thalia-en",
     "macos_voice": "auto",
+    "local_voice": "auto",
 }
 
 
@@ -183,26 +188,28 @@ def make_audio_deepgram(text: str, idx: int, *, workdir: Path,
     return target_m4a, _ffprobe_duration(target_m4a)
 
 
-def make_audio_macos(text: str, idx: int, *, workdir: Path,
+def make_audio_local(text: str, idx: int, *, workdir: Path,
                      cache, tts_cfg: Dict[str, Any]) -> Tuple[Path, float]:
-    """macOS `say` -> wav -> m4a. Free, offline, macOS-only. No alignment.
+    """Local (free, offline) TTS -> wav -> m4a. Dispatches per-OS to macOS
+    `say`, Windows SAPI, or Linux espeak-ng. No word-level alignment.
 
-    The heavy lifting lives in `video_claw.tts.macos.synthesize` so it can be
+    The heavy lifting lives in `video_claw.tts.local.synthesize` so it can be
     imported directly from tests / external code.
     """
-    voice = tts_cfg.get("macos_voice", DEFAULT_TTS["macos_voice"])
+    voice = (tts_cfg.get("local_voice") or tts_cfg.get("macos_voice")
+             or DEFAULT_TTS["local_voice"])
     rate = float(tts_cfg.get("speaking_rate", DEFAULT_TTS["speaking_rate"]))
 
     def _generate(out_path: Path) -> None:
         # synthesize writes a wav directly to out_path.
-        _macos.synthesize(text, out_path, voice=voice)
+        _local.synthesize(text, out_path, voice=voice)
 
-    tts_key = [text, "macos", "voice", voice]
+    tts_key = [text, "local", platform.system(), "voice", voice]
     cached_wav = cache.run("tts", tts_key, "wav", _generate)
     target_wav = workdir / f"narr_{idx:02d}.wav"
     target_wav.write_bytes(cached_wav.read_bytes())
 
-    m4a_key = [cached_wav, "rate", round(rate, 4), "silenceremove", "0.25", "0.0", "macos"]
+    m4a_key = [cached_wav, "rate", round(rate, 4), "silenceremove", "0.25", "0.0", "local"]
 
     def _m4a_gen(out_path: Path) -> None:
         _encode_to_m4a(target_wav, out_path, rate=rate)
@@ -211,6 +218,12 @@ def make_audio_macos(text: str, idx: int, *, workdir: Path,
     target_m4a = workdir / f"narr_{idx:02d}.m4a"
     target_m4a.write_bytes(cached_m4a.read_bytes())
     return target_m4a, _ffprobe_duration(target_m4a)
+
+
+def make_audio_macos(text: str, idx: int, **kwargs) -> Tuple[Path, float]:
+    """Backward-compat alias: `macos` now resolves to the cross-platform
+    `local` provider (which is `say` on macOS)."""
+    return make_audio_local(text, idx, **kwargs)
 
 
 def resolve_provider(tts_cfg: Dict[str, Any]) -> str:
@@ -228,8 +241,8 @@ def resolve_provider(tts_cfg: Dict[str, Any]) -> str:
         return "elevenlabs"
     if provider == "deepgram":
         return "deepgram"
-    if provider in ("macos", "say", "macos-say"):
-        return "macos"
+    if provider in ("macos", "say", "macos-say", "local", "free"):
+        return "local"
     if provider != "auto":
         return provider  # unknown explicit value; dispatch will raise a clear error
 
@@ -237,11 +250,11 @@ def resolve_provider(tts_cfg: Dict[str, Any]) -> str:
         return "elevenlabs"
     if keys.get("DEEPGRAM_API_KEY"):
         return "deepgram"
-    if platform.system() == "Darwin":
-        return "macos"
+    if _local.is_available():
+        return "local"
     raise RuntimeError(
-        "No TTS available: set ELEVENLABS_API_KEY or DEEPGRAM_API_KEY, or run "
-        "on macOS for free local TTS (provider=auto found no usable option)."
+        "No TTS available: set ELEVENLABS_API_KEY or DEEPGRAM_API_KEY, or "
+        "install a local voice (macOS `say` / Windows SAPI / Linux espeak-ng)."
     )
 
 
@@ -253,11 +266,11 @@ def make_audio(text: str, idx: int, *, workdir: Path, cache,
     tts_cfg = {**tts_cfg, "provider": provider}
     if provider == "deepgram":
         return make_audio_deepgram(text, idx, workdir=workdir, cache=cache, tts_cfg=tts_cfg)
-    if provider == "macos":
-        return make_audio_macos(text, idx, workdir=workdir, cache=cache, tts_cfg=tts_cfg)
+    if provider == "local":
+        return make_audio_local(text, idx, workdir=workdir, cache=cache, tts_cfg=tts_cfg)
     if provider == "elevenlabs":
         return make_audio_elevenlabs(text, idx, workdir=workdir, cache=cache, tts_cfg=tts_cfg)
     raise ValueError(
         f"Unknown TTS provider: {provider!r}. "
-        "Use 'auto', 'elevenlabs', 'deepgram', or 'macos'."
+        "Use 'auto', 'elevenlabs', 'deepgram', or 'local'."
     )

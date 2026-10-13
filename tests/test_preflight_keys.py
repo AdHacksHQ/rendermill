@@ -1,11 +1,10 @@
 """Preflight key check is auto-aware and degrades gracefully.
 
 Surfaced by the no-key end-to-end render: the CLI preflight must let
-`provider:"auto"` fall back to macOS local TTS instead of demanding a key, and
+`provider:"auto"` fall back to local TTS instead of demanding a key, and
 must treat a missing FAL key (lipsync) as a warning, not a hard block.
 """
 from __future__ import annotations
-import platform
 
 
 def _project(tmp_path, tts_override, slides):
@@ -22,18 +21,31 @@ def _no_keys(monkeypatch):
         monkeypatch.delenv(k, raising=False)
 
 
-def test_auto_no_keys_on_mac_ok(monkeypatch, tmp_path):
+def _patch_local_avail(monkeypatch, available):
+    from video_claw import tts
+    monkeypatch.setattr(tts, "_local", _FakeLocal(available))
+
+
+class _FakeLocal:
+    def __init__(self, available):
+        self._available = available
+
+    def is_available(self):
+        return self._available
+
+
+def test_auto_no_keys_local_available_ok(monkeypatch, tmp_path):
     from video_claw import cli
     _no_keys(monkeypatch)
-    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    _patch_local_avail(monkeypatch, True)
     proj = _project(tmp_path, {"provider": "auto"}, [{"narration": "hi"}])
     assert cli._ensure_keys_for(proj) is None
 
 
-def test_auto_no_keys_on_linux_errors(monkeypatch, tmp_path):
+def test_auto_no_keys_no_local_errors(monkeypatch, tmp_path):
     from video_claw import cli
     _no_keys(monkeypatch)
-    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    _patch_local_avail(monkeypatch, False)
     proj = _project(tmp_path, {"provider": "auto"}, [{"narration": "hi"}])
     err = cli._ensure_keys_for(proj)
     assert err and "No TTS" in err
@@ -54,7 +66,6 @@ def test_lipsync_without_fal_warns_not_blocks(monkeypatch, tmp_path, capsys):
                         lambda name: "x" if name == "ELEVENLABS_API_KEY" else None)
     monkeypatch.setenv("ELEVENLABS_API_KEY", "x")
     monkeypatch.delenv("FAL_API_KEY", raising=False)
-    monkeypatch.setattr(platform, "system", lambda: "Darwin")
     proj = _project(tmp_path, {"provider": "auto"},
                     [{"narration": "hi", "lipsync": True}])
     assert cli._ensure_keys_for(proj) is None

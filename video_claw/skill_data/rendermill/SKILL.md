@@ -264,7 +264,7 @@ Tell the user the budget up front:
 
 - ElevenLabs v3: ~$0.60 per minute of audio; turbo v2.5 ~$0.30/min.
 - fal.ai OmniHuman 1.5: $0.16 per second of generated lipsync video.
-- Everything else (backdrops, captions, clips, music mix, macOS say): $0.
+- Everything else (backdrops, captions, clips, music mix, local TTS): $0.
 - Re-renders are free (content-hash cache).
 
 ### Free / $0 mode

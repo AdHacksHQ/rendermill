@@ -104,10 +104,10 @@ def test_estimate_free_mode_is_zero():
     assert rep.est_usd == 0.0
 
 
-def test_estimate_macos_is_zero(monkeypatch):
+def test_estimate_local_is_zero(monkeypatch):
     from video_claw import batch, tts, keys
     monkeypatch.setattr(keys, "get", lambda name: None)
-    monkeypatch.setattr(tts, "resolve_provider", lambda cfg: "macos")
+    monkeypatch.setattr(tts, "resolve_provider", lambda cfg: "local")
     rep = batch.estimate_project([{"narration": "x" * 500}], {})
     assert rep.est_usd == 0.0
 

@@ -44,7 +44,7 @@ DEFAULT_CONFIG = {
     "orientation": "horizontal",  # "horizontal" (1920x1080) or "short" (1080x1920)
     "out_path": "out/video.mp4",
     "tts": {
-        "provider": "auto",  # auto-select EL -> Deepgram -> macOS from the keys present
+        "provider": "auto",  # auto-select EL -> Deepgram -> local from the keys present
         # §5.5 voice lane — eleven_v3 pinned (turbo_v2_5 drifts accent);
         # falls back to the cascade when no EL key.
         "voice_id": "cgSgspJ2msm6clMCkdW9",   # ElevenLabs "Jessica" — set your own
@@ -52,7 +52,9 @@ DEFAULT_CONFIG = {
         "speaking_rate": 1.0,
         # Deepgram fallback voice if provider=deepgram
         "deepgram_voice": "aura-2-thalia-en",
-        # macOS local voice; "auto" picks the best installed English voice
+        # Local (free) voice; "auto" picks the best installed voice per-OS
+        # (macOS `say` / Windows SAPI / Linux espeak-ng).
+        "local_voice": "auto",
         "macos_voice": "auto",
     },
     "lipsync": {
@@ -134,12 +136,16 @@ def _apply_free_mode(config: dict, slides: list) -> None:
 
     Free mode FORCES the free/local path (it does not merely default to it),
     so a stray `provider: "elevenlabs"` or a slide-level `lipsync: True` left
-    in the project file cannot silently incur cost. A user-set `macos_voice`
-    is respected.
+    in the project file cannot silently incur cost. A user-set `local_voice`
+    (or the legacy `macos_voice`) is respected.
     """
     tts = config.setdefault("tts", {})
-    tts["provider"] = "macos"
-    tts.setdefault("macos_voice", "auto")  # best installed voice; respects an explicit override
+    tts["provider"] = "local"
+    # Promote a legacy `macos_voice` override to the generic key so it is not
+    # silently ignored by the local provider.
+    if tts.get("macos_voice") not in (None, "auto") and tts.get("local_voice") in (None, "auto"):
+        tts["local_voice"] = tts["macos_voice"]
+    tts.setdefault("local_voice", "auto")  # best installed voice; respects an explicit override
 
     for slide in slides:
         slide.pop("lipsync", None)  # never call paid fal.ai in free mode
@@ -203,11 +209,12 @@ CONFIG = {
     "title": "%(title)s",
     "orientation": "%(orientation)s",   # "horizontal" or "short"
     "out_path": "out/%(slug)s.mp4",
-    # "mode": "free",  # $0 render: macOS `say` voice, static Becky avatar on
-    #                  # every slide, free estimated captions, no paid APIs.
+    # "mode": "free",  # $0 render: local voice (say/SAPI/espeak-ng), static
+    #                  # Becky avatar on every slide, free estimated captions,
+    #                  # no paid APIs.
     "tts": {
         # "auto" uses ElevenLabs if you have a key, else Deepgram, else free
-        # macOS local TTS — so this renders with no keys at all on a Mac.
+        # local TTS — so this renders with no keys at all on any OS.
         "provider": "auto",
         "voice_id": "cgSgspJ2msm6clMCkdW9",  # ElevenLabs Jessica (used only if auto picks EL)
         "model": "eleven_turbo_v2_5",

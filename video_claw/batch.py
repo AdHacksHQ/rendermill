@@ -5,7 +5,7 @@
   1. Cost report: per-project estimate of paid-API spend BEFORE rendering.
      ElevenLabs pricing (2026-10, turbo_v2_5 ≈ $0.00005/char ≈ 5¢/1k chars;
      eleven_v3 ≈ $0.0001/char). fal OmniHuman ≈ $0.05/s of video, only on
-     lipsync slides. Everything local (macOS say, ffmpeg, backdrops) = $0.
+     lipsync slides. Everything local (say/SAPI/espeak-ng, ffmpeg, backdrops) = $0.
   2. Spend ceiling: auto-proceed only while the RUNNING TOTAL stays under
      the declared ceiling. A project that would push the batch over the
      ceiling HALTS the batch (the spend law) and maps to the Yellow gate:
@@ -74,7 +74,7 @@ def resolve_ceiling(cfg_ceiling: Optional[float], cli_ceiling: Optional[float]) 
 
 def estimate_project(slides: List[Dict[str, Any]], config: Dict[str, Any],
                      project_name: str = "project") -> CostReport:
-    """Estimate paid-API spend for one project. Local providers (macOS say)
+    """Estimate paid-API spend for one project. Local providers (say/SAPI/espeak-ng)
     and free-mode renders estimate $0. Uses the same provider-resolution
     logic as the render itself; safe to call pre-render (no network)."""
     from . import tts as tts_mod  # local import: avoid cycles in tests
@@ -83,14 +83,14 @@ def estimate_project(slides: List[Dict[str, Any]], config: Dict[str, Any],
     chars = sum(len(s.get("narration") or "") for s in slides)
     lipsync_s = 0.0
     if config.get("mode") == "free":
-        provider = "macos(free)"
+        provider = "local(free)"
         est_tts = 0.0
     else:
         try:
             provider = tts_mod.resolve_provider(tts_cfg)
         except RuntimeError:
-            provider = "macos(fallback)"
-        if provider == "macos":
+            provider = "local(fallback)"
+        if provider == "local":
             est_tts = 0.0
         else:
             model = tts_cfg.get("model", "eleven_turbo_v2_5")

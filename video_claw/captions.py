@@ -111,7 +111,7 @@ def build_estimated_srt_for_slide(text: str, offset_s: float,
                                   duration: float) -> List[Entry]:
     """Caption chunks with timing ESTIMATED from text + measured audio duration.
 
-    Used when the TTS provider emits no word-level alignment (macOS `say`,
+    Used when the TTS provider emits no word-level alignment (local TTS,
     Deepgram). Each word's share of `duration` is proportional to its character
     length, so longer words occupy proportionally more time. `duration` is the
     measured, post-atempo audio length, so no speaking-rate division is needed.
