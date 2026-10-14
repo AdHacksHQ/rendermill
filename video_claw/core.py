@@ -273,7 +273,7 @@ def make_video(slides: List[Dict[str, Any]], *,
 
     # Phase 3: TTS (cached), optional lipsync/avatar (cached), per-slide MP4 stitching.
     if free:
-        print("[boot] $0 mode: local macOS TTS, no paid APIs")
+        print("[boot] $0 mode: local OS TTS, no paid APIs")
 
     resolved_provider = tts_mod.resolve_provider(tts_cfg)
     if (tts_cfg.get("provider") or "auto").lower() == "auto":

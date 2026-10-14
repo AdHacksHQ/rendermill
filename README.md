@@ -118,10 +118,13 @@ anything in the project that would otherwise spend money:
 
 Uses your OS's built-in voice — macOS `say`, Windows SAPI, or Linux espeak-ng (`apt install espeak-ng`).
 
+Verify your OS's local voice with the cross-platform smoke probe:
+`python scripts/smoke_local_tts.py --tts-dir video_claw/tts`
+
 **Or just ask Claude.** Say *"make me a free video about X"* (or "$0", "no
 budget") and the skill sets `mode: "free"` for you — no file editing. You'll
 know it's active when the render prints
-`[boot] $0 mode: local macOS TTS, no paid APIs`.
+`[boot] $0 mode: local OS TTS, no paid APIs`.
 
 Here's a free-mode render — Zoe voice, Becky badge, estimated captions,
 rendered with no API keys:

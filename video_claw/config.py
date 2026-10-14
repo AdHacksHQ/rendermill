@@ -62,7 +62,7 @@ DEFAULT_CONFIG = {
         "fal_omnihuman_version": "v1.5",
         "resolution": "720p",
     },
-    "mode": None,  # set to "free" for a $0 render (macOS TTS, static avatar, no paid APIs)
+    "mode": None,  # set to "free" for a $0 render (local OS TTS, static avatar, no paid APIs)
     "avatar": {
         "static": False,       # overlay a still circular avatar badge
         "scope": "all",        # "all" | "intro" | "flagged"
